@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useState } from "react";
 import { Home, Video, Calendar, Store, ArrowLeftRight, LogOut, Crown, ShieldCheck, School, TrendingUp } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
@@ -70,9 +71,25 @@ export default function App() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {tab === "home" && <HomeScreen isPaid={isPaid} planTier={planTier} isAcademyOwner={isAcademyOwner} setTab={setTab} />}
+          {tab === "home" && (
+            <HomeScreen 
+              isPaid={isPaid} 
+              planTier={planTier} 
+              isAcademyOwner={isAcademyOwner} 
+              setTab={setTab}
+              recentAnalysisData={analysis}
+              onStartUpload={() => setTab("analyze")}
+            />
+          )}
           {tab === "analyze" && (
-            <AnalyzeScreen isPaid={isPaid} onPlanReady={(r) => { setAnalysis(r); setPlan(null); }} setTab={setTab} />
+            <AnalyzeScreen 
+              isPaid={isPaid} 
+              onPlanReady={(r) => { setAnalysis(r); setPlan(null); }} 
+              setTab={setTab} 
+              onRetest={() => {
+                setTab("analyze");
+              }}
+            />
           )}
           {tab === "plan" && <PlanScreen analysis={analysis} plan={plan} setPlan={setPlan} isPaid={isPaid} />}
           {tab === "compare" && <CompareScreen planTier={planTier} />}
