@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+/* Fixes the "content squished into a narrow left column with a huge
+   black area on the right" bug: html/body/#root had no explicit width,
+   and centering relied only on Tailwind's `flex justify-center`, which
+   silently fails on some mobile/PWA webviews. */
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: #05070B;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
