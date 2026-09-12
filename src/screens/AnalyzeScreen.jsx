@@ -8,7 +8,14 @@ export default function AnalyzeScreen() {
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setVideoFile(e.target.files[0]);
+      const file = e.target.files[0];
+      // Vercel 4.5MB limit check
+      if (file.size > 4.5 * 1024 * 1024) {
+        setError("Video size 4MB se chhota hona chahiye (Vercel Serverless limit).");
+        setVideoFile(null);
+        return;
+      }
+      setVideoFile(file);
       setError(null);
     }
   };
@@ -20,9 +27,7 @@ export default function AnalyzeScreen() {
       fileReader.onload = () => {
         resolve(fileReader.result.split(",")[1]);
       };
-      fileReader.onerror = (error) => {
-        reject(error);
-      };
+      fileReader.onerror = (err) => reject(err);
     });
   };
 
@@ -47,6 +52,11 @@ export default function AnalyzeScreen() {
         }),
       });
 
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Video file ka size Vercel API limits se bada hai.");
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -62,42 +72,45 @@ export default function AnalyzeScreen() {
   };
 
   return (
-    <div className="p-4 bg-slate-900 text-white min-h-screen">
-      <h1 className="text-xl font-bold mb-4">Analyze</h1>
-      <p className="text-sm text-gray-300 mb-2">
+    <div className="p-4 bg-[#0a0f1d] text-white min-h-screen">
+      <h1 className="text-2xl font-bold mb-2">Analyze</h1>
+      <p className="text-xs text-gray-400 mb-4">
         Ek shot select karo, video daalo, AI dekhega kya sahi kya galat hai
       </p>
 
-      <div className="my-4">
-        <input
-          type="file"
-          accept="video/*"
-          onChange={handleFileChange}
-          className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-emerald-500 file:text-white"
-        />
+      <div className="mb-4">
+        <label className="inline-block bg-[#162032] border border-gray-700 text-gray-200 text-xs px-3 py-2 rounded cursor-pointer">
+          Choose file
+          <input
+            type="file"
+            accept="video/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </label>
         {videoFile && (
-          <p className="mt-2 text-xs text-emerald-400">{videoFile.name}</p>
+          <span className="ml-2 text-xs text-gray-300">{videoFile.name}</span>
         )}
       </div>
 
       <button
         onClick={handleAnalyze}
         disabled={loading}
-        className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 rounded font-semibold text-black"
+        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded text-black font-semibold text-xs flex items-center gap-1"
       >
-        {loading ? "Analyzing Video..." : "▷ Analyze Karo"}
+        ▷ {loading ? "Analyzing..." : "Analyze Karo"}
       </button>
 
       {error && (
-        <div className="mt-4 p-2 bg-red-900/50 border border-red-500 text-red-200 text-sm rounded">
+        <div className="mt-4 p-2 bg-red-900/60 border border-red-500 text-red-200 text-xs rounded">
           ⚠️ {error}
         </div>
       )}
 
       {analysisResult && (
-        <div className="mt-4 p-4 bg-slate-800 rounded">
-          <h2 className="font-bold text-emerald-400 mb-2">Analysis Result:</h2>
-          <p className="text-sm whitespace-pre-wrap">{analysisResult}</p>
+        <div className="mt-4 p-3 bg-[#111827] border border-emerald-500/30 rounded">
+          <h2 className="font-bold text-emerald-400 text-sm mb-1">Analysis Result:</h2>
+          <p className="text-xs text-gray-300 whitespace-pre-wrap">{analysisResult}</p>
         </div>
       )}
     </div>
