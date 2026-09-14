@@ -26,8 +26,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_API_KEY environment variable missing" });
     }
 
-    // Updated to latest working model string
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    // Updated to standard working model identifier
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const result = await model.generateContent([
       {
