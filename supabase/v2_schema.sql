@@ -9,9 +9,12 @@ alter table public.profiles add column if not exists age_group text;
 alter table public.profiles add column if not exists gender text;
 alter table public.profiles add column if not exists current_focus text;
 
--- Keep the existing four-tier plan check if the old migration already created it.
+-- Plan labels: drop the old check FIRST, rename legacy labels, then add the new check.
+-- (Adding the new check before renaming fails if any user still has 'basic'/'pro'.)
 alter table public.profiles drop constraint if exists profiles_plan_tier_check;
 alter table public.profiles drop constraint if exists profiles_plan_tier_check_v2;
+update public.profiles set plan_tier='pro_99' where plan_tier='basic';
+update public.profiles set plan_tier='video_499' where plan_tier='pro';
 alter table public.profiles add constraint profiles_plan_tier_check_v2
   check (plan_tier in ('free','pro_99','video_499','special_coach'));
 
@@ -133,9 +136,7 @@ begin
 end; $$;
 grant execute on function public.consume_video_credit() to authenticated;
 
--- Existing users keep their data; only old plan names are normalized.
-update public.profiles set plan_tier='pro_99' where plan_tier='basic';
-update public.profiles set plan_tier='video_499' where plan_tier='pro';
+-- Existing users keep their data; plan names were normalized at the top of this file.
 update public.profiles set visual_credits_remaining=100,visual_credits_reset_at=current_date where plan_tier in ('pro_99','video_499','special_coach') and coalesce(visual_credits_remaining,0)=0;
 update public.profiles set video_credits_remaining=100,video_credits_reset_at=current_date where plan_tier in ('video_499','special_coach') and coalesce(video_credits_remaining,0)=0;
 
@@ -159,7 +160,9 @@ update public.profiles set video_credits_remaining=100,video_credits_reset_at=cu
 create or replace function public.guard_profile_self_update()
 returns trigger language plpgsql as $$
 begin
-  if public.is_admin() or coalesce(current_setting('cricket.trusted_credit_update', true), 'off') = 'on' then
+  -- auth.uid() is null for the SQL editor and the server-side service-role key
+  -- (trusted backend); only real end-user sessions are restricted.
+  if auth.uid() is null or public.is_admin() or coalesce(current_setting('cricket.trusted_credit_update', true), 'off') = 'on' then
     return new;
   end if;
   new.plan_tier := old.plan_tier;

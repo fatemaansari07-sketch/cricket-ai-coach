@@ -16,7 +16,7 @@ create table if not exists public.profiles (
   full_name text,
   phone text,
   city text,
-  plan_tier text not null default 'free' check (plan_tier in ('free','pro_99','video_499','special_999')),
+  plan_tier text not null default 'free' check (plan_tier in ('free','basic','pro')),
   plan_renews_at timestamptz,
   videos_analyzed_today int not null default 0,
   videos_quota_reset_at date default current_date,
@@ -25,10 +25,13 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "profiles: user reads own" on public.profiles;
 create policy "profiles: user reads own" on public.profiles
   for select using (auth.uid() = id);
+drop policy if exists "profiles: user updates own" on public.profiles;
 create policy "profiles: user updates own" on public.profiles
   for update using (auth.uid() = id);
+drop policy if exists "profiles: user inserts own" on public.profiles;
 create policy "profiles: user inserts own" on public.profiles
   for insert with check (auth.uid() = id);
 
@@ -61,6 +64,7 @@ create table if not exists public.videos (
 );
 
 alter table public.videos enable row level security;
+drop policy if exists "videos: owner all" on public.videos;
 create policy "videos: owner all" on public.videos
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -81,6 +85,7 @@ create table if not exists public.analyses (
 );
 
 alter table public.analyses enable row level security;
+drop policy if exists "analyses: owner all" on public.analyses;
 create policy "analyses: owner all" on public.analyses
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -110,9 +115,11 @@ create table if not exists public.practice_plan_days (
 alter table public.practice_plans enable row level security;
 alter table public.practice_plan_days enable row level security;
 
+drop policy if exists "plans: owner all" on public.practice_plans;
 create policy "plans: owner all" on public.practice_plans
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "plan_days: owner all" on public.practice_plan_days;
 create policy "plan_days: owner all" on public.practice_plan_days
   for all using (
     auth.uid() = (select user_id from public.practice_plans p where p.id = plan_id)
@@ -144,10 +151,12 @@ create table if not exists public.comparisons (
 );
 
 alter table public.comparisons enable row level security;
+drop policy if exists "comparisons: owner all" on public.comparisons;
 create policy "comparisons: owner all" on public.comparisons
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 alter table public.pro_players enable row level security;
+drop policy if exists "pro_players: everyone reads" on public.pro_players;
 create policy "pro_players: everyone reads" on public.pro_players
   for select using (true);
 
@@ -157,7 +166,7 @@ create policy "pro_players: everyone reads" on public.pro_players
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  plan_tier text not null check (plan_tier in ('pro_99','video_499','special_999')),
+  plan_tier text not null check (plan_tier in ('basic','pro')),
   billing_type text not null check (billing_type in ('monthly','per_video')),
   amount_paise int not null,          -- e.g. 9900 for ₹99
   razorpay_payment_id text,
@@ -169,6 +178,7 @@ create table if not exists public.subscriptions (
 );
 
 alter table public.subscriptions enable row level security;
+drop policy if exists "subscriptions: owner all" on public.subscriptions;
 create policy "subscriptions: owner all" on public.subscriptions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -192,10 +202,13 @@ create table if not exists public.shop_ads (
 );
 
 alter table public.shop_ads enable row level security;
+drop policy if exists "shop_ads: public reads approved" on public.shop_ads;
 create policy "shop_ads: public reads approved" on public.shop_ads
   for select using (status = 'approved');
+drop policy if exists "shop_ads: vendor inserts own" on public.shop_ads;
 create policy "shop_ads: vendor inserts own" on public.shop_ads
   for insert with check (auth.uid() = vendor_user_id);
+drop policy if exists "shop_ads: vendor updates own pending" on public.shop_ads;
 create policy "shop_ads: vendor updates own pending" on public.shop_ads
   for update using (auth.uid() = vendor_user_id and status = 'pending');
 
@@ -209,6 +222,7 @@ create table if not exists public.affiliate_ads (
 );
 
 alter table public.affiliate_ads enable row level security;
+drop policy if exists "affiliate_ads: public reads active" on public.affiliate_ads;
 create policy "affiliate_ads: public reads active" on public.affiliate_ads
   for select using (is_active = true);
 
@@ -224,6 +238,7 @@ create table if not exists public.ad_events (
 );
 
 alter table public.ad_events enable row level security;
+drop policy if exists "ad_events: insert by anyone authenticated" on public.ad_events;
 create policy "ad_events: insert by anyone authenticated" on public.ad_events
   for insert with check (auth.uid() = user_id or user_id is null);
 
@@ -236,10 +251,12 @@ insert into storage.buckets (id, name, public) values ('ad-images', 'ad-images',
   on conflict (id) do nothing;
 
 -- storage policy: users can upload/read only their own videos
+drop policy if exists "videos bucket: owner rw" on storage.objects;
 create policy "videos bucket: owner rw" on storage.objects
   for all using (bucket_id = 'videos' and (storage.foldername(name))[1] = auth.uid()::text)
   with check (bucket_id = 'videos' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "ad-images bucket: public read" on storage.objects;
 create policy "ad-images bucket: public read" on storage.objects
   for select using (bucket_id = 'ad-images');
 
@@ -277,18 +294,22 @@ returns boolean as $$
 $$ language sql security definer stable;
 
 -- Admins can read every profile (needed for the admin user list)
+drop policy if exists "profiles: admin reads all" on public.profiles;
 create policy "profiles: admin reads all" on public.profiles
   for select using (public.is_admin());
 
 -- Admins can update any profile (e.g. change someone's plan_tier, ban a user)
+drop policy if exists "profiles: admin updates all" on public.profiles;
 create policy "profiles: admin updates all" on public.profiles
   for update using (public.is_admin());
 
 -- Admins can see every shop ad, including pending/rejected ones
+drop policy if exists "shop_ads: admin reads all" on public.shop_ads;
 create policy "shop_ads: admin reads all" on public.shop_ads
   for select using (public.is_admin());
 
 -- Admins can approve/reject any shop ad
+drop policy if exists "shop_ads: admin updates all" on public.shop_ads;
 create policy "shop_ads: admin updates all" on public.shop_ads
   for update using (public.is_admin());
 
@@ -329,10 +350,12 @@ create table if not exists public.academies (
 
 alter table public.academies enable row level security;
 
+drop policy if exists "academies: owner manages own" on public.academies;
 create policy "academies: owner manages own" on public.academies
   for all using (auth.uid() = owner_user_id) with check (auth.uid() = owner_user_id);
 
 -- students need to look up an academy by invite code to join it
+drop policy if exists "academies: anyone can look up by code" on public.academies;
 create policy "academies: anyone can look up by code" on public.academies
   for select using (true);
 
@@ -341,11 +364,13 @@ alter table public.profiles add column if not exists academy_id uuid references 
 alter table public.profiles add column if not exists is_academy_owner boolean not null default false;
 
 -- academy owners need to read their students' profiles + analyses
+drop policy if exists "profiles: academy owner reads own students" on public.profiles;
 create policy "profiles: academy owner reads own students" on public.profiles
   for select using (
     academy_id in (select id from public.academies where owner_user_id = auth.uid())
   );
 
+drop policy if exists "analyses: academy owner reads students' analyses" on public.analyses;
 create policy "analyses: academy owner reads students' analyses" on public.analyses
   for select using (
     user_id in (
@@ -424,101 +449,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.consume_video_credit() TO authenticated;
-
-
--- ============================================================
--- PLAN / CREDIT / 3-KEYFRAME UPGRADE (2026-09)
--- ============================================================
--- Existing databases may still have the old basic/pro constraint.
-DO $$
-DECLARE c text;
-BEGIN
-  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='public.profiles'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%plan_tier%' LOOP
-    EXECUTE format('ALTER TABLE public.profiles DROP CONSTRAINT %I', c);
-  END LOOP;
-EXCEPTION WHEN undefined_table THEN NULL;
-END $$;
-DO $$
-DECLARE c text;
-BEGIN
-  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='public.subscriptions'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%plan_tier%' LOOP
-    EXECUTE format('ALTER TABLE public.subscriptions DROP CONSTRAINT %I', c);
-  END LOOP;
-EXCEPTION WHEN undefined_table THEN NULL;
-END $$;
-
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS visual_credits_remaining integer NOT NULL DEFAULT 0;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS video_credits_remaining integer NOT NULL DEFAULT 0;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS credits_reset_at date DEFAULT current_date;
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_plan_tier_new_check;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_plan_tier_new_check
-  CHECK (plan_tier IN ('free','pro_99','video_499','special_999'));
-
-ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS shot_type text;
-ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
-ALTER TABLE public.analyses ADD COLUMN IF NOT EXISTS issues jsonb NOT NULL DEFAULT '[]'::jsonb;
-
--- Atomic 10-credit visual-keyframe consumption. Used by the server API.
-CREATE OR REPLACE FUNCTION public.consume_visual_credit_for_user(p_user_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE r integer; t text; today date := current_date;
-BEGIN
-  SELECT plan_tier, COALESCE(visual_credits_remaining,0) INTO t,r FROM public.profiles WHERE id=p_user_id FOR UPDATE;
-  IF t IS NULL THEN RETURN jsonb_build_object('allowed',false,'remaining',0,'reason','profile_not_found'); END IF;
-  IF t NOT IN ('pro_99','video_499','special_999') THEN RETURN jsonb_build_object('allowed',false,'remaining',0,'reason','plan_has_no_visual_credits'); END IF;
-  IF r < 10 THEN RETURN jsonb_build_object('allowed',false,'remaining',r,'reason','credits_exhausted'); END IF;
-  r := r - 10;
-  UPDATE public.profiles SET visual_credits_remaining=r, credits_reset_at=COALESCE(credits_reset_at,today) WHERE id=p_user_id;
-  RETURN jsonb_build_object('allowed',true,'remaining',r);
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.consume_visual_credit_for_user(uuid) TO service_role;
-
-CREATE OR REPLACE FUNCTION public.consume_visual_credit()
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-BEGIN
-  RETURN public.consume_visual_credit_for_user(auth.uid());
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.consume_visual_credit() TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.consume_video_credit()
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE uid uuid:=auth.uid(); r integer; t text; today date:=current_date;
-BEGIN
-  SELECT plan_tier,COALESCE(video_credits_remaining,0) INTO t,r FROM public.profiles WHERE id=uid FOR UPDATE;
-  IF t IS NULL THEN RETURN jsonb_build_object('allowed',false,'remaining',0,'reason','profile_not_found'); END IF;
-  IF t NOT IN ('video_499','special_999') THEN RETURN jsonb_build_object('allowed',false,'remaining',0,'reason','plan_has_no_video_credits'); END IF;
-  IF r < 10 THEN RETURN jsonb_build_object('allowed',false,'remaining',r,'reason','credits_exhausted'); END IF;
-  r:=r-10; UPDATE public.profiles SET video_credits_remaining=r,credits_reset_at=COALESCE(credits_reset_at,today) WHERE id=uid;
-  RETURN jsonb_build_object('allowed',true,'remaining',r);
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.consume_video_credit() TO authenticated;
-
--- Demo-friendly recharge functions. In production call these only from a verified payment webhook.
-CREATE OR REPLACE FUNCTION public.recharge_visual_credits(p_amount integer DEFAULT 100)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE uid uuid:=auth.uid(); r integer;
-BEGIN
-  IF uid IS NULL OR p_amount <> 100 THEN RETURN jsonb_build_object('allowed',false); END IF;
-  UPDATE public.profiles SET visual_credits_remaining=COALESCE(visual_credits_remaining,0)+100 WHERE id=uid RETURNING visual_credits_remaining INTO r;
-  RETURN jsonb_build_object('allowed',true,'remaining',r);
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.recharge_visual_credits(integer) TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.recharge_video_credits(p_amount integer DEFAULT 100)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE uid uuid:=auth.uid(); r integer;
-BEGIN
-  IF uid IS NULL OR p_amount <> 100 THEN RETURN jsonb_build_object('allowed',false); END IF;
-  UPDATE public.profiles SET video_credits_remaining=COALESCE(video_credits_remaining,0)+100 WHERE id=uid RETURNING video_credits_remaining INTO r;
-  RETURN jsonb_build_object('allowed',true,'remaining',r);
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.recharge_video_credits(integer) TO authenticated;
-
--- Give current paid demo users the intended starting balances if they are empty.
-UPDATE public.profiles SET visual_credits_remaining=100 WHERE plan_tier IN ('pro_99','video_499','special_999') AND COALESCE(visual_credits_remaining,0)=0;
-UPDATE public.profiles SET video_credits_remaining=100 WHERE plan_tier IN ('video_499','special_999') AND COALESCE(video_credits_remaining,0)=0;
