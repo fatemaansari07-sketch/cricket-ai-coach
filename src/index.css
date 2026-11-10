@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FIX: "screen kala kala dikh raha hai" — form controls (buttons, the
+   Cover Drive <select>, Choose File) showing up as plain white boxes with
+   black text despite our dark-theme inline styles.
+   This is Android WebView/Chrome's automatic "force dark" feature: when
+   the phone is in system dark mode, some browsers repaint native form
+   controls with their own heuristic colors, ignoring page CSS — because
+   the browser doesn't know the page is ALREADY intentionally dark.
+   `color-scheme: dark` is the standard way to tell it "this page is dark
+   on purpose, don't auto-invert my controls". */
+:root, html {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Fixes the "content squished into a narrow left column with a huge
+   black area on the right" bug: html/body/#root had no explicit width,
+   and centering relied only on Tailwind's `flex justify-center`, which
+   silently fails on some mobile/PWA webviews. */
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: #05070B;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
