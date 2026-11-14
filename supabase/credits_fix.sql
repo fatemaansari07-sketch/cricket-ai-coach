@@ -15,6 +15,16 @@ alter table public.visual_analysis_usage enable row level security;
 drop policy if exists "Users view own visual usage" on public.visual_analysis_usage;
 create policy "Users view own visual usage" on public.visual_analysis_usage for select using (auth.uid()=user_id);
 
+-- Purane overloaded versions (e.g. consume_visual_credit(credit_cost integer)) ko hata do,
+-- warna "Could not choose the best candidate function" error aata hai.
+do $$
+declare r record;
+begin
+  for r in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname in ('consume_visual_credit','consume_video_credit')
+  loop execute 'drop function ' || r.sig || ' cascade'; end loop;
+end $$;
+
 create or replace function public.consume_visual_credit()
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare uid uuid := auth.uid(); tier text; remaining integer; today date := current_date; cost integer := 10; lim integer;
